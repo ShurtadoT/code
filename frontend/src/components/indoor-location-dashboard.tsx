@@ -1,58 +1,83 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from 'recharts';
 import { Signal, MapPin, Battery, Radio, Clock, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { SensorData, HistoricalDataResponse, LocationStats } from '@/types/sensor-types';
 import { fetchLatestReading, fetchHistoricalData, fetchLocationStats } from '@/lib/api-client';
 
 export default function IndoorLocationDashboard() {
-  const [latestReading, setLatestReading] = useState<SensorData | null>(null);
+  // Estado principal
   const [latestData, setLatestData] = useState<SensorData | null>(null);
   const [noData, setNoData] = useState(false);
   const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
   const [locationStats, setLocationStats] = useState<LocationStats | null>(null);
-  const [setIsLoading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Carga periódica de datos
   useEffect(() => {
     loadAllData();
     const interval = setInterval(loadAllData, 40000); // Actualizar cada 40 segundos
     return () => clearInterval(interval);
   }, []);
 
-async function loadAllData() {
-  try {
-    setError(null);
-    setNoData(false);
-    setIsLoading(true);
+  async function loadAllData() {
+    try {
+      setError(null);
+      setNoData(false);
+      setIsLoading(true);
 
-    const [latest, historical, stats] = await Promise.all([
-      fetchLatestReading(),
-      fetchHistoricalData(24),
-      fetchLocationStats(24),
-    ]);
+      const [latest, historicalResponse, stats] = await Promise.all([
+        fetchLatestReading(),
+        fetchHistoricalData(24),
+        fetchLocationStats(24),
+      ]);
 
-    if (!latest) {
-      // No hay datos recientes -> mostrar mensaje amigable, no error rojo
-      setNoData(true);
-      setLatestReading(null);
-      setHistoricalData(historical);
+      if (!latest) {
+        // No hay datos recientes -> mensaje amigable, no error
+        setNoData(true);
+
+        // Normalizamos histórico a array, venga como venga
+        const historicalArray: SensorData[] = Array.isArray(historicalResponse)
+          ? historicalResponse
+          : (historicalResponse as any)?.data ??
+            (historicalResponse as any)?.readings ??
+            [];
+
+        setLatestData(null);
+        setHistoricalData(historicalArray);
+        setLocationStats(stats);
+        return;
+      }
+
+      // Normalizamos histórico también aquí
+      const historicalArray: SensorData[] = Array.isArray(historicalResponse)
+        ? historicalResponse
+        : (historicalResponse as any)?.data ??
+          (historicalResponse as any)?.readings ??
+          [];
+
+      setLatestData(latest);
+      setHistoricalData(historicalArray);
       setLocationStats(stats);
-      return;
+    } catch (err) {
+      setError('Error al conectar con la API');
+    } finally {
+      setIsLoading(false);
     }
-
-    setLatestReading(latest);
-    setHistoricalData(historical);
-    setLocationStats(stats);
-  } catch (err) {
-    setError('Error al conectar con la API');
-  } finally {
-    setIsLoading(false);
   }
-}
-
 
   const getSignalQuality = (rssi: number): { label: string; color: string } => {
     if (rssi >= -50) return { label: 'Excelente', color: 'text-emerald-400' };
@@ -67,20 +92,24 @@ async function loadAllData() {
     return 'text-red-400';
   };
 
-  const locationChartData = locationStats?.by_location
-    ? Object.entries(locationStats.by_location).map(([location, count]) => ({
-        location,
-        readings: count,
-      }))
-    : [];
+  const locationChartData =
+    locationStats?.by_location
+      ? Object.entries(locationStats.by_location).map(([location, count]) => ({
+          location,
+          readings: count,
+        }))
+      : [];
 
+  // historicalData ES un array sí o sí
   const rssiChartData = historicalData.slice(-20).map((item) => ({
     time: format(new Date(item.timestamp), 'HH:mm'),
     rssi: item.rssi,
     distance: item.distance,
   }));
 
-  if (loading) {
+  // ---- Render condicional ----
+
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -108,7 +137,7 @@ async function loadAllData() {
     );
   }
 
-  if (!latestData) {
+  if (noData || !latestData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-2">
@@ -121,6 +150,7 @@ async function loadAllData() {
 
   const signalQuality = getSignalQuality(latestData.rssi);
 
+  // ---- Dashboard principal ----
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -133,7 +163,9 @@ async function loadAllData() {
               </div>
               Indoor Location Tracker
             </h1>
-            <p className="text-muted-foreground mt-1">Sistema de Monitoreo ESP32 en Tiempo Real</p>
+            <p className="text-muted-foreground mt-1">
+              Sistema de Monitoreo ESP32 en Tiempo Real
+            </p>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
             <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse-slow" />
@@ -149,9 +181,13 @@ async function loadAllData() {
               <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
                 <MapPin className="w-5 h-5 text-primary" />
               </div>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Ubicación</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                Ubicación
+              </span>
             </div>
-            <p className="text-3xl font-bold text-foreground capitalize">{latestData.location}</p>
+            <p className="text-3xl font-bold text-foreground capitalize">
+              {latestData.location}
+            </p>
             <p className="text-sm text-muted-foreground mt-1">{latestData.device}</p>
           </div>
 
@@ -161,9 +197,13 @@ async function loadAllData() {
               <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-accent" />
               </div>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Distancia</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                Distancia
+              </span>
             </div>
-            <p className="text-3xl font-bold text-foreground">{latestData.distance.toFixed(2)}</p>
+            <p className="text-3xl font-bold text-foreground">
+              {latestData.distance.toFixed(2)}
+            </p>
             <p className="text-sm text-muted-foreground mt-1">metros al sensor</p>
           </div>
 
@@ -173,10 +213,14 @@ async function loadAllData() {
               <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
                 <Signal className="w-5 h-5 text-blue-400" />
               </div>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Señal</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                Señal
+              </span>
             </div>
             <p className="text-3xl font-bold text-foreground">{latestData.rssi} dBm</p>
-            <p className={`text-sm mt-1 ${signalQuality.color} font-medium`}>{signalQuality.label}</p>
+            <p className={`text-sm mt-1 ${signalQuality.color} font-medium`}>
+              {signalQuality.label}
+            </p>
           </div>
 
           {/* Last Update */}
@@ -185,7 +229,9 @@ async function loadAllData() {
               <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
                 <Clock className="w-5 h-5 text-purple-400" />
               </div>
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Actualización</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                Actualización
+              </span>
             </div>
             <p className="text-lg font-bold text-foreground">
               {format(new Date(latestData.timestamp), 'HH:mm:ss')}
@@ -217,7 +263,14 @@ async function loadAllData() {
                     color: '#e4e8f0',
                   }}
                 />
-                <Line type="monotone" dataKey="rssi" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="RSSI (dBm)" />
+                <Line
+                  type="monotone"
+                  dataKey="rssi"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="RSSI (dBm)"
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -252,19 +305,31 @@ async function loadAllData() {
           <h3 className="text-lg font-semibold text-foreground mb-4">Detalles Técnicos</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Device ID</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Device ID
+              </p>
               <p className="text-sm font-mono text-foreground">{latestData.device}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Signal Strength</p>
-              <p className="text-sm font-mono text-foreground">{latestData.signal_strength} dBm</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Signal Strength
+              </p>
+              <p className="text-sm font-mono text-foreground">
+                {latestData.signal_strength} dBm
+              </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Readings (24h)</p>
-              <p className="text-sm font-mono text-foreground">{locationStats?.total_readings || 0}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Total Readings (24h)
+              </p>
+              <p className="text-sm font-mono text-foreground">
+                {locationStats?.total_readings || 0}
+              </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Data Source</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Data Source
+              </p>
               <p className="text-sm font-mono text-accent">InfluxDB</p>
             </div>
           </div>

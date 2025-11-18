@@ -4,8 +4,8 @@ class InfluxDBService {
   async getLatestReading() {
     const query = `
       from(bucket: "${bucket}")
-        |> range(start: -1h)
-        |> filter(fn: (r) => r["_measurement"] == "pet_location_data")
+        |> range(start: -40s)
+        |> filter(fn: (r) => r["_measurement"] == "pet_location")
         |> last()
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
     `;
@@ -15,7 +15,6 @@ class InfluxDBService {
       return result[0] || null;
     } catch (error) {
       console.error('Error fetching latest reading:', error);
-      throw error;
     }
   }
 
@@ -23,7 +22,7 @@ class InfluxDBService {
     const query = `
       from(bucket: "${bucket}")
         |> range(start: -${hours}h)
-        |> filter(fn: (r) => r["_measurement"] == "pet_location_data")
+        |> filter(fn: (r) => r["_measurement"] == "pet_location")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         |> sort(columns: ["_time"], desc: false)
     `;
@@ -37,10 +36,10 @@ class InfluxDBService {
   }
 
   async getLocationStats(hours = 24) {
-    const query = `
+    const query = ` 
       from(bucket: "${bucket}")
         |> range(start: -${hours}h)
-        |> filter(fn: (r) => r["_measurement"] == "pet_location_data")
+        |> filter(fn: (r) => r["_measurement"] == "pet_location")
         |> filter(fn: (r) => r["_field"] == "distance")
         |> group(columns: ["location"])
         |> count()

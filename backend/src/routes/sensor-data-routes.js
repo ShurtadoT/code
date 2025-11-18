@@ -5,7 +5,12 @@ const router = Router();
 
 // GET http://localhost:3001/api/sensor-data/latest
 router.get('/latest', (req, res) => {
-  sensorDataController.getLatestReading(req, res);
+  try {
+      sensorDataController.getLatestReading(req, res);
+    } catch (error) {
+      console.error('Error fetching latest reading:', error);
+
+    }
 });
 
 // GET http://localhost:3001/api/sensor-data/history?hours=24
