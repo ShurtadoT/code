@@ -17,23 +17,26 @@ export async function fetchLatestReading(): Promise<SensorData | null> {
   return response.json();
 }
 
+export async function fetchHistoryReading(): Promise<SensorData | null> {
+  const response = await fetch(`${API_URL}/api/sensor-data/history`);
 
-export async function fetchHistoricalData(hours: number = 24): Promise<HistoricalDataResponse> {
-  const response = await fetch(`${API_URL}/api/sensor-data/history?hours=${hours}`);
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch historical data: ${response.statusText}`);
+  if (response.status === 404) {
+    return null;
   }
-  
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch history reading: ${response.statusText}`);
+  }
+
   return response.json();
 }
 
-export async function fetchLocationStats(hours: number = 24): Promise<LocationStats> {
-  const response = await fetch(`${API_URL}/api/sensor-data/stats?hours=${hours}`);
-  
+export async function fetchAllReadings(hours: number = 24): Promise<SensorData[]> {
+  const response = await fetch(`${API_URL}/api/sensor-data/all?hours=${hours}`);
+
   if (!response.ok) {
-    throw new Error(`Failed to fetch location stats: ${response.statusText}`);
+    throw new Error(`Failed to fetch all readings: ${response.statusText}`);
   }
-  
+
   return response.json();
 }
